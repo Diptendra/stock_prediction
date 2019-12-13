@@ -1,0 +1,126 @@
+---
+title: "Stock Prediction"
+author: "Diptendra Nath Bagchi (dbagchi2@illinois.edu) / Sahil Wadhwa (sahilw2@illinois.edu)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    theme: cosmo
+    toc: yes
+  pdf_document: default
+urlcolor: BrickRed
+---
+
+```{r, setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.align = 'center')
+```
+
+```{r, load-packages, include = FALSE}
+# load packages
+library(rsample)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(gridExtra)
+library(tidyverse)
+library(caret)
+library(gridExtra)
+library(lubridate)
+```
+
+***
+
+# Motivation
+
+In the recent times, financial institutions have put in a lot of effort to create investment strategies using machine learning to make financial gains by predicting the stock prices for next day and sometime at an hourly levels as well. We both are interested in finance as a subject and hence we decided to work on this problem of predicting the stock price for top 100 companies registered at New York Stock Exchange. The problem is slightly more complicated that just using  a linear regression as we know the prices are highly correlated from the previous day and hence this data is a classical use-case for time series. 
+
+But, in this project we will try to include models that we have learnt so far in the class to make stock market predictions. The benefit of doing that is two-fold. One, we will be able to learn about the financial markets and their intricacies and second, we will use this to build a project that we intend on working over a long period of time to make it a complete product.
+
+# Data
+
+This is a stock market(NYSE) data set that we have downloaded from Kaggle. The data set contains four files with different information about the companies. This includes open, close high, low prices of the stock in a particular day. This price data set is available at a daily level but the fundamentals data set is only available at an yearly level. The objective is to predict the next day's open and close price for top 100 companies based on the market capitalization.
+
+Data set consists of following files:
+
+- prices.csv: raw, as-is daily prices. Most of data spans from 2010 to the end 2016, for companies new on stock market date range is shorter. There have been approx. 140 stock splits in that time, this set doesn't account for that.
+
+- prices-split-adjusted.csv: same as prices, but there have been added adjustments for splits.
+
+- securities.csv: general description of each company with division on sectors
+
+- fundamentals.csv: metrics extracted from annual SEC 10K fillings (2012-2016), should be enough to derive most of popular fundamental indicators.[^1]
+
+```{r, message = FALSE}
+fundamental = read_csv("data/fundamentals.csv")
+prc_splt_adjusted = read_csv("data/prices-split-adjusted.csv")
+prc = read_csv("data/prices.csv")
+securities = read_csv("data/securities.csv")
+```
+
+```{r, Data-Join}
+fundamental$year = year(fundamental$`Period Ending`)
+prc$year = year(prc$date)
+```
+
+```{r}
+stock = merge(x = prc, y = fundamental, 
+              by.x = c("year", "symbol"), by.y = c("year", "Ticker Symbol"))
+```
+
+# Type of task: Regression 
+
+We will predict a stock's open and close price based on the fundamentals and other data provided in the kaggle data set. 
+
+In short, we will train two models - one for predicting the open price and one for the close price for the stock.
+
+This will help us in creating investment strategies for next day. 
+
+```{r}
+stock_subset = stock[1:100, ]
+response = tibble("date" = stock_subset$date, 
+                  "open" = stock_subset$open, 
+                  "close" = stock_subset$close)
+
+response %>% 
+  kable(digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE, 
+                position = "center") %>% 
+  add_header_above(header = c("This is our response variable" = 3)) %>% 
+  scroll_box(height = "500px")
+```
+
+# Modeling
+
+```{r}
+one_ticker = stock %>% 
+  filter(symbol == "AAPL")
+stock = one_ticker
+stock$month = factor(month(stock$date))
+stock$day = day(stock$date)
+stock_trn_tst = initial_split(data = stock, prop = 0.80)
+stock_trn = training(x = stock_trn_tst)
+stock_tst = testing(x = stock_trn_tst)
+```
+
+```{r}
+
+lm_mod = lm(formula = open ~ year + month + day + `Pre-Tax Margin` + `Profit Margin`,  
+            data = stock_trn, weights = )
+```
+
+# Prediction
+
+It is done only for one stock with ticker symbol AAPL - Apple. 
+
+```{r}
+predict_vector = predict(object = lm_mod, newdata = stock_tst)
+
+prediction = tibble("prediction" = predict_vector, 
+                    "actual" = stock_tst$open)
+prediction %>% 
+  kable(digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "center") %>% 
+  add_header_above(header = c("Predicted open price for Apple" = 2)) %>% 
+  scroll_box(height = "500px")
+```
+
+
