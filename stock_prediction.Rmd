@@ -25,6 +25,8 @@ library(tidyverse)
 library(caret)
 library(gridExtra)
 library(lubridate)
+library(forecast)
+library(mclust)
 ```
 
 ***
@@ -52,19 +54,27 @@ Data set consists of following files:
 ```{r, message = FALSE}
 fundamental = read_csv("data/fundamentals.csv")
 prc_splt_adjusted = read_csv("data/prices-split-adjusted.csv")
-prc = read_csv("data/prices.csv")
 securities = read_csv("data/securities.csv")
 ```
 
 ```{r, Data-Join}
 fundamental$year = year(fundamental$`Period Ending`)
-prc$year = year(prc$date)
+prc_splt_adjusted$year = year(prc_splt_adjusted$date)
 ```
 
-```{r}
-stock = merge(x = prc, y = fundamental, 
+# Feature engineering
+
+```{r, date-feature}
+stock = merge(x = prc_splt_adjusted, y = fundamental, 
               by.x = c("year", "symbol"), by.y = c("year", "Ticker Symbol"))
+stock = stock %>% 
+  mutate(month = month(date), 
+         day_of_month = mday(date),
+         day_of_week = wday(date),
+         quarter = quarter(date)
+         )
 ```
+
 
 # Type of task: Regression 
 
@@ -74,34 +84,141 @@ In short, we will train two models - one for predicting the open price and one f
 
 This will help us in creating investment strategies for next day. 
 
-```{r}
-stock_subset = stock[1:100, ]
-response = tibble("date" = stock_subset$date, 
-                  "open" = stock_subset$open, 
-                  "close" = stock_subset$close)
+# top 10 stocks
 
-response %>% 
-  kable(digits = 2) %>% 
-  kable_styling(bootstrap_options = "striped", full_width = FALSE, 
-                position = "center") %>% 
-  add_header_above(header = c("This is our response variable" = 3)) %>% 
-  scroll_box(height = "500px")
+```{r}
+top_stocks = stock %>% 
+  group_by(symbol) %>% 
+  summarise(market_cap = median(open * `Common Stocks`)) %>% 
+  arrange(desc(market_cap)) %>% 
+  top_n(n = 10, wt = market_cap)
+```
+
+```{r}
+stock = stock %>% 
+  filter(symbol %in% top_stocks$symbol)
 ```
 
 # Modeling
 
 ```{r}
 one_ticker = stock %>% 
-  filter(symbol == "AAPL")
-stock = one_ticker
-stock$month = factor(month(stock$date))
-stock$day = day(stock$date)
-stock_trn_tst = initial_split(data = stock, prop = 0.80)
-stock_trn = training(x = stock_trn_tst)
-stock_tst = testing(x = stock_trn_tst)
+  filter(symbol == "AVGO")
+one_ticker = one_ticker %>%
+  arrange(date) %>% 
+  mutate(index = 1:nrow(one_ticker), 
+         ma = ma(x = open, order = 8, centre = TRUE))
+```
+
+```{r, count-na}
+count_na = one_ticker %>% 
+  summarise_all(funs(sum(is.na(.))))
+```
+
+```{r }
+test_perc = round(0.2 * nrow(one_ticker), digits = 0)
+one_ticker_trn = one_ticker[1:(nrow(one_ticker) - test_perc - 1), ]
+one_ticker_tst = one_ticker[(nrow(one_ticker) - test_perc): nrow(one_ticker), ]
+```
+
+```{r, linear-model}
+ctrl = trainControl(method = "timeslice", 
+                    initialWindow = round(nrow(one_ticker_trn)/2), 
+                    horizon = 1, 
+                    fixedWindow = TRUE
+                    )
+mod_lm = train(open ~ year + month + day_of_month + 
+                  day_of_week + index + ma,
+               data = one_ticker_trn, 
+               method = "lm", 
+               trControl = ctrl,
+               preProcess = "medianImpute",
+               na.action = na.pass
+               )
+```
+
+```{r, random-forest}
+ctrl = trainControl(method = "timeslice", 
+                    initialWindow = round(nrow(one_ticker_trn)/2), 
+                    horizon = 1, 
+                    fixedWindow = TRUE
+                    )
+mod_rf = train(open ~ year + month + day_of_month + 
+                  day_of_week + index + ma,
+               data = one_ticker_trn, 
+               method = "rf", 
+               trControl = ctrl,
+               preProcess = "medianImpute",
+               na.action = na.pass
+               )
 ```
 
 ```{r}
+ctrl = trainControl(method = "timeslice", 
+                    initialWindow = round(nrow(one_ticker_trn)/2), 
+                    horizon = 1, 
+                    fixedWindow = TRUE
+                    )
+mod_pls = train(open ~ year + month + day_of_month + 
+                  day_of_week + index + ma,
+               data = one_ticker_trn, 
+               method = "bagEarth", 
+               trControl = ctrl,
+               preProcess = "medianImpute",
+               na.action = na.pass
+               )
+```
+
+# Modelling for all 10 stocks
+
+```{r, train-test split}
+trn_tst_split = function(df) {
+  test_perc = round(0.2 * nrow(df), digits = 0)
+  one_ticker_trn = df[1:(nrow(df) - test_perc - 1), ]
+  one_ticker_tst = df[(nrow(df) - test_perc): nrow(df), ]
+  list(one_ticker_trn, one_ticker_tst)
+}
+```
+
+
+```{r}
+list_of_stocks = split(x = stock, f = stock$symbol)
+list_trn_tst = lapply(list_of_stocks, trn_tst_split)
+list_trn = lapply(list_trn_tst, function(x) x[[1]])
+list_tst = lapply(list_trn_tst, function(x) x[[2]])
+```
+
+```{r}
+
+```
+
+
+```{r}
+#a_stock_pred = predict(mod_lm, predict(preProcess(one_ticker_trn, "medianImpute"), one_ticker_tst))
+
+a_stock_pred = predict(mod_pls, one_ticker_tst, na.action = na.pass)
+RMSE(pred = a_stock_pred, obs = one_ticker_tst$open)
+```
+
+```{r}
+dens = densityMclust(data = one_ticker$open)
+plot(dens, what = "density", data = one_ticker$open)
+```
+
+
+
+```{r}
+time_slices = createTimeSlices(y = 1: nrow(stock), initialWindow = nrow(stock)/4, horizon = 1, fixedWindow = TRUE)
+
+```
+
+
+
+```{r}
+
+
+
+
 
 lm_mod = lm(formula = open ~ year + month + day + `Pre-Tax Margin` + `Profit Margin`,  
             data = stock_trn, weights = )
@@ -123,4 +240,13 @@ prediction %>%
   scroll_box(height = "500px")
 ```
 
+
+```{r}
+response %>% 
+  kable(digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE, 
+                position = "center") %>% 
+  add_header_above(header = c("This is our response variable" = 3)) %>% 
+  scroll_box(height = "500px")
+```
 
