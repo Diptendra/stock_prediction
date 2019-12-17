@@ -34,7 +34,7 @@ library(microbenchmark)
 
 # Abstract
 
-  > The objective of the analysis is to predict the open and the close price for top ten stocks (by market capitalization) traded in the New York Stock Exchange (NYSE). Statistical learning methods are used to predict the price level to see if it can be done using algorithms and if so, how accurately?
+  > The objective of the analysis is to predict the open price (dollars) for top ten stocks (by market capitalization) traded in the New York Stock Exchange (NYSE). Statistical learning methods are used to predict the price level to see if it can be done using algorithms and if so, how accurately?
 
 *** 
 
@@ -48,14 +48,13 @@ But, in this project we will try to include models that we have learnt so far in
 
 # Introduction
 
-Over the last deacade, machine generated trading - either fully or partially has become norm for the trading companies. It has not only reduced the manual work but also made the trade faster than was ever possible. It has
+Due to the advancement in the computation power and cheap hardware, it has become possible to train complex algorithms for data heavy tasks like prediction, clustering etc. Financial institutions have benefited lot from the advancement in computers and computing power in general. The major benefit has been in predicting the next day price for stocks that is one of the key inputs in the investment strategies and due to this algorithms have had a huge impact on the company's top line. 
 
+It is said that more that 30% of the trading are now machine generated and because of that this analysis is our effort to see if complex algorithms can be used for predicting prices for different stocks. Machine generated trading are called algorithmic trading[^1].
 
 Algorithmic trading is a process for executing orders utilizing automated and pre-programmed trading instructions to account for variables such as price, timing and volume. An algorithm is a set of directions for solving a problem. Computer algorithms send small portions of the full order to the market over time.
 
-
-Algorithmic trading makes use of complex formulas, combined with mathematical models and human oversight, to make decisions to buy or sell financial securities on an exchange. Algorithmic traders often make use of high-frequency trading technology, which can enable a firm to make tens of thousands of trades per second. Algorithmic trading can be used in a wide variety of situations including order execution, arbitrage, and trend trading strategies.
-
+In this analysis, we are only focusing on price only.
 
 ***
 
@@ -63,7 +62,7 @@ Algorithmic trading makes use of complex formulas, combined with mathematical mo
 
 ## Data
 
-This is a stock market(NYSE) data set that we have downloaded from Kaggle. The data set contains four files with different information about the companies. This includes open, close high, low prices of the stock in a particular day. This price data set is available at a daily level but the fundamentals data set is only available at an yearly level. The objective is to predict the next day's open and close price for top ten companies based on the market capitalization.
+This is a stock market(NYSE) data set that we have downloaded from Kaggle. The data set contains four files with different information about the companies. This includes open, close high, low prices of the stock in a particular day. This price data set is available at a daily level but the fundamentals data set is only available at an yearly level. The objective is to predict the next day's open and close price for top ten companies based on the market capitalization[^2].
 
 Data set consists of following files:
 
@@ -73,7 +72,7 @@ Data set consists of following files:
 
 - securities.csv: general description of each company with division on sectors
 
-- fundamentals.csv: metrics extracted from annual SEC 10K fillings (2012-2016), should be enough to derive most of popular fundamental indicators.[^1]
+- fundamentals.csv: metrics extracted from annual SEC 10K fillings (2012-2016), should be enough to derive most of popular fundamental indicators.
 
 ```{r, message = FALSE, echo = FALSE, warning = FALSE}
 fundamental = read_csv("data/fundamentals.csv")
@@ -90,18 +89,25 @@ prc_splt_adjusted$year = year(prc_splt_adjusted$date)
 
 ## Feature engineering
 
-Feature engineering is the process of using domain knowledge of the data to create features that make machine learning algorithms work. Feature engineering is fundamental to the application of machine learning, and is both difficult and expensive.
+Feature engineering is the process of using domain knowledge of the data to create features that make machine learning algorithms work. Feature engineering is fundamental to the application of machine learning, and is both difficult and expensive[^3].
 
-In our problem, as we are not using 
+In our problem, we have to come up with new features that can be useful for prediction and some of the features that we created to be use in our modelling are given below.
 
+- `month`: Month of the date
 
-  
+- `day_of_month`: Day of the month for a given date
+
+- `day_of_week`: Day of the week(e.g. sunday, Monday etc.)
+
+- `quarter`: Quarter of the year
+
+- `index`: A numeric index to capture the trend of the stock prices
+
+We have created these extra date variables because prices of the stocks depends on all of these variables. For. e.g. the stock price depends on `day_of_week` because investors try to realize profit by the end of the week compared to the beginning of the week.  
   
   > Coming up with features is difficult, time-consuming, requires expert knowledge. "Applied machine learning" is basically feature engineering.
 
 -<span style="color:blue"> *Andrew Ng* </span>, _Machine Learning and AI via Brain simulations_.
-
-
 
 ```{r, date-feature}
 stock = merge(x = prc_splt_adjusted, y = fundamental, 
@@ -119,14 +125,15 @@ stock = stock %>%
 ```{r}
 top_stocks = stock %>% 
   group_by(symbol) %>% 
-  summarise(market_cap = mean(open * `Common Stocks`)) %>% 
-  arrange(desc(market_cap)) %>% 
-  top_n(n = 10, wt = market_cap)
-top_stocks %>% 
+  summarise(`Market Capitalization` = 
+              mean(open * `Estimated Shares Outstanding`) / 1000000000 ) %>% 
+  arrange(desc(`Market Capitalization`)) %>% 
+  top_n(n = 10, wt = `Market Capitalization`)
+top_stocks %>%
   kable(digits = 2) %>% 
   kable_styling(bootstrap_options = "striped", full_width = FALSE, 
                 position = "center") %>% 
-  add_header_above(header = c("Top 10 stocks (by market cap) $" = 2))
+  add_header_above(header = c("Top 10 stocks Billions ($)" = 2))
 ```
 
 ```{r}
@@ -134,7 +141,23 @@ stock = stock %>%
   filter(symbol %in% top_stocks$symbol)
 ```
 
-## Modeling (For AAPL - Apple Inc.)
+## Modeling (AAPL - Apple Inc.)
+
+Before we scale up, we want to check if we could do it for a single stock. Hence, this is the modelling exercise for one Apple stock. In this case we have use four modelling techniques i.e. Linear model, K-nearest neighbors, Random forest and Partial least squares and compare their RMSE values before we choose our final model. 
+
+Because this is a time-series data, we have to be careful about the way we divide the train and test set as it cannot be a random split. Hence we had to use timseslice from caret package. 
+
+The function for splitting is `createTimeSlices` and this create time slices as per [Hyndman and Athanasopoulos (2013)](https://otexts.com/fpp2/accuracy.html). 
+The three parameters for this type of splitting are:
+
+- `initialWindow`: the initial number of consecutive values in each training set sample
+
+- `horizon`: The number of consecutive values in test set sample
+
+- `fixedWindow`: A logical: if FALSE, the training set always start at the first sample and the training set size will vary over data splits.
+
+![image
+](![image](https://drive.google.com/uc?id=15rIRPvA6T4ANluPWpTezge4fGPSpLY6F) 
 
 ```{r}
 one_ticker = stock %>% 
@@ -156,9 +179,6 @@ one_ticker_trn = one_ticker[1:(nrow(one_ticker) - test_perc - 1), ]
 one_ticker_tst = one_ticker[(nrow(one_ticker) - test_perc): nrow(one_ticker), ]
 ```
 
-### Test train split for validation for time series
-### Imputation
-
 ```{r, linear-model, warning = FALSE}
 ctrl = trainControl(method = "timeslice", 
                     initialWindow = round(nrow(one_ticker_trn)/2), 
@@ -167,7 +187,7 @@ ctrl = trainControl(method = "timeslice",
                     )
 set.seed(42)
 mod_lm = train(open ~ year + month + day_of_month + 
-                  day_of_week + index + ma,
+                  day_of_week + index + quarter + ma,
                data = one_ticker_trn, 
                method = "lm", 
                trControl = ctrl,
@@ -179,7 +199,7 @@ mod_lm = train(open ~ year + month + day_of_month +
 ```{r, random-forest, warning = FALSE}
 set.seed(42)
 mod_rf = train(open ~ year + month + day_of_month + 
-                  day_of_week + index + ma,
+                  day_of_week + index + quarter + ma,
                data = one_ticker_trn, 
                method = "rf", 
                trControl = ctrl,
@@ -191,7 +211,7 @@ mod_rf = train(open ~ year + month + day_of_month +
 ```{r, partial least squares, warning = FALSE} 
 set.seed(42)
 mod_pls = train(open ~ year + month + day_of_month + 
-                  day_of_week + index + ma,
+                  day_of_week + index + quarter + ma,
                data = one_ticker_trn, 
                method = "pls", 
                trControl = ctrl,
@@ -203,7 +223,7 @@ mod_pls = train(open ~ year + month + day_of_month +
 ```{r, knn, warning = FALSE}
 set.seed(42)
 mod_knn = train(open ~ year + month + day_of_month + 
-                  day_of_week + index + ma,
+                  day_of_week + index + quarter + ma,
                data = one_ticker_trn, 
                method = "knn", 
                trControl = ctrl,
@@ -213,6 +233,8 @@ mod_knn = train(open ~ year + month + day_of_month +
 ```
 
 ### RMSE Evaluation
+
+We calculate the RMSE for all the four models for Apple stock open price and compare it with each other. The shows that Linear Model produces the least rmse. This makes sense also because the stock prices in general linear in short term. 
 
 ```{r}
 time_slice_rmse = tibble("Linear Model" = min(mod_lm$results[, "RMSE"]), 
@@ -228,7 +250,9 @@ time_slice_rmse %>%
 ```
 
 
-### Scaling up for all stocks using apply functions
+### Scaling-Up (using apply functions)
+
+Now, once we have successfully modeled stock prices for one stock, we want to scale it up for all the top 10 stocks. To run it in parallel we use `lapply` and `map` functions to decrease the computation time. Without running it in parallel, it would have been a very difficult problem to run for each stock. Also, from here onwards it is easy to scale up as we just need to change only the models that we want to run[^4].
 
 ```{r}
 add_feature = function(df) {
@@ -240,7 +264,7 @@ add_feature = function(df) {
 }
 ```
 
-```{r, train-test split}
+```{r, function train-test split}
 trn_tst_split = function(df) {
   test_perc = round(0.2 * nrow(df), digits = 0)
   one_ticker_trn = df[1:(nrow(df) - test_perc - 1), ]
@@ -266,7 +290,7 @@ stock_modeling = function(mod_type = "lm", df_trn) {
                     )
   set.seed(42)
   mod_lm = train(open ~ year + month + day_of_month + 
-                    day_of_week + index + ma,
+                    day_of_week + index + quarter + ma,
                  data = df_trn, 
                  method = mod_type, 
                  trControl = ctrl,
@@ -280,81 +304,119 @@ stock_modeling = function(mod_type = "lm", df_trn) {
 ```{r, warning = FALSE}
 list_mod_lm = lapply(list_trn, stock_modeling, mod_type = "lm")
 list_mod_knn = lapply(list_trn, stock_modeling, mod_type = "knn")
-list_mod_pls = lapply(list_trn, stock_modeling, mod_type = "knn")
+list_mod_pls = lapply(list_trn, stock_modeling, mod_type = "pls")
 ```
 
-```{r}
+```{r, rmse, warning = FALSE}
+rmse_lm = map_dbl(list_mod_lm, function(x) min(x$results[, "RMSE"])) %>% 
+  enframe() %>% 
+  spread(key = name, value = value)
+rmse_knn = map_dbl(list_mod_knn, function(x) min(x$results[, "RMSE"])) %>% 
+  enframe() %>% 
+  spread(key = name, value = value)
+rmse_pls = map_dbl(list_mod_pls, function(x) min(x$results[, "RMSE"])) %>% 
+  enframe() %>% 
+  spread(key = name, value = value)
+rmse_all_mod = rbind(rmse_lm, rmse_knn, rmse_pls)
+rownames(rmse_all_mod) = c("Linear Model", 
+                           "K Nearest Neighbors", 
+                           "Partial Least Squares Model")
+rmse_all_mod = add_rownames(rmse_all_mod)
+colnames(rmse_all_mod)[1] = "Model"
+rmse_all_mod %>% 
+  kable(digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE, 
+                position = "center") %>% 
+  add_header_above(header = c("Time Sliced Best RMSE" = 11))
+```
+
+# Results
+
+Base on the RMSE for all the top ten stock prices, we see that Linear models works best for almost all the stocks and hence we use linear model for predicting the test data set. The test RMSE is given below. 
+
+```{r, prediction-linear model, warning = FALSE} 
 predict_df = function(mod, df_tst) {
   predict(mod, df_tst, na.action = na.pass)
 }
 rmse_calculation = function(pred, actual) {
   RMSE(pred = pred, obs = actual$open)
 }
-list_prediction = mapply(predict_df, list_mod, list_tst)
-rmse_stocks = mapply(rmse_calculation, list_prediction, list_tst)
-rmse_stocks_dbl = map_dbl(rmse_stocks, function(x) x)
-```
-
-```{r}
-rmse_stocks
-```
-
-
-```{r}
-#a_stock_pred = predict(mod_lm, predict(preProcess(one_ticker_trn, "medianImpute"), one_ticker_tst))
-
-a_stock_pred = predict(mod_lm, one_ticker_tst, na.action = na.pass)
-RMSE(pred = a_stock_pred, obs = one_ticker_tst$open)
-```
-
-```{r}
-dens = densityMclust(data = one_ticker$open)
-plot(dens, what = "density", data = one_ticker$open)
-```
-
-
-
-```{r}
-time_slices = createTimeSlices(y = 1: nrow(stock), initialWindow = nrow(stock)/4, horizon = 1, fixedWindow = TRUE)
-
-```
-
-
-
-```{r}
-
-lm_mod = lm(formula = open ~ year + month + day + `Pre-Tax Margin` + `Profit Margin`,  
-            data = stock_trn, weights = )
-```
-
-# Prediction
-
-It is done only for one stock with ticker symbol AAPL - Apple. 
-
-```{r}
-predict_vector = predict(object = lm_mod, newdata = stock_tst)
-
-prediction = tibble("prediction" = predict_vector, 
-                    "actual" = stock_tst$open)
-prediction %>% 
-  kable(digits = 2) %>% 
-  kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "center") %>% 
-  add_header_above(header = c("Predicted open price for Apple" = 2)) %>% 
-  scroll_box(height = "500px")
-```
-
-
-```{r}
-response %>% 
+list_prediction = mapply(predict_df, list_mod_lm, list_tst)
+tst_rmse_stocks = mapply(rmse_calculation, list_prediction, list_tst)
+tst_rmse_stocks_dbl = map_dbl(tst_rmse_stocks, function(x) x) %>% 
+  enframe() %>% 
+  spread(key = name, value = value)
+rownames(tst_rmse_stocks_dbl) = "Linear Model"
+tst_rmse_stocks_dbl = tst_rmse_stocks_dbl %>% 
+  add_rownames()
+colnames(tst_rmse_stocks_dbl)[1] = "Model"
+tst_rmse_stocks_dbl %>% 
   kable(digits = 2) %>% 
   kable_styling(bootstrap_options = "striped", full_width = FALSE, 
                 position = "center") %>% 
-  add_header_above(header = c("This is our response variable" = 3)) %>% 
-  scroll_box(height = "500px")
+  add_header_above(header = c("Test RMSE" = 11))
 ```
 
-[Feature                   Engineering](https://en.wikipedia.org/wiki/Feature_engineering)
-[Kaggle Link](https://www.kaggle.com/dgawlik/nyse)
-[Microbenchmark](https://cran.r-project.org/web/packages/microbenchmark/microbenchmark.pdf)
-[Algorithmic trading](https://www.investopedia.com/articles/active-trading/101014/basics-algorithmic-trading-concepts-and-examples.asp)
+# Conclusion
+
+Based on the results, it looks like we can definitely use statistical methods as the base techniques to predict stocks prices for our trading purposes. There is a lot of improvements that we can incorporate in this analysis. Some of the imporvements could be in-depth feature analysis and engineering and also hyperparameter tuning search on a bigger grid. 
+
+Overall, we believe this is a good starting point for us to incorporate some of the additional components that we believe will not only increase the accuracy but will also make it more robust.
+
+# Appendix
+
+## Data Dictionary
+
+- `symbol`: Ticker symbol
+
+- `open`: Opening price of a stock($)
+
+- `close`: Closing price of a stock($)
+
+- `low`: Lowest price of that day
+
+- `high`: Highest price of that day
+
+- `Volume`: Number of stocks traded on that day 
+
+- `Estimated Shares Outstanding`: Number of outstanding shares
+
+- `month`: Month of the date
+
+- `day_of_month`: Day of the month for a given date
+
+- `day_of_week`: Day of the week(e.g. Sunday, Monday etc.)
+
+- `quarter`: Quarter of the year
+
+- `index`: A numeric index to capture the trend of the stock prices
+
+## EDA
+
+```{r, message = FALSE, warning = FALSE, comment = FALSE}
+dens = densityMclust(data = one_ticker$open)
+plot(dens, what = "density", data = one_ticker$open, 
+     xlab = "Open($) for AAPL", 
+     ylab = "Density", 
+     main = "Density plot for Apple ")
+```
+
+```{r}
+p1 = ggplot(data = stock, mapping = aes(x = date, y = open)) +
+  geom_line( color="#69b3a2") + 
+  xlab("") + scale_x_date(date_labels = "%m-%Y") +
+  ylab("Open($)") +
+  ggtitle("Open Prices of top 10 stocks") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(facets = "symbol")
+p1
+```
+
+
+## References
+
+[^1]: [Algorithmic              trading](https://www.investopedia.com/articles/active-trading/101014/basics-algorithmic-trading-concepts-and-examples.asp)
+[^2]: [Kaggle Link](https://www.kaggle.com/dgawlik/nyse)
+[^3]: [Feature Engineering](https://en.wikipedia.org/wiki/Feature_engineering)
+[^4]: [Microbenchmark ](https://cran.r-project.org/web/packages/microbenchmark/microbenchmark.pdf)
 
