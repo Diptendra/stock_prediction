@@ -2,6 +2,7 @@
 title: "Stock Prediction"
 author: "Diptendra Nath Bagchi (dbagchi2@illinois.edu) / Sahil Wadhwa (sahilw2@illinois.edu)"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+github: "https://github.com/Diptendra/stock_prediction/tree/dev"
 output:
   html_document: 
     theme: cosmo

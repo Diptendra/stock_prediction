@@ -577,7 +577,7 @@ T
 <h2>Modeling (AAPL - Apple Inc.)</h2>
 <p>Before we scale up, we want to check if we could do it for a single stock. Hence, this is the modelling exercise for one Apple stock. In this case we have use four modelling techniques i.e. Linear model, K-nearest neighbors, Random forest and Partial least squares and compare their RMSE values before we choose our final model.</p>
 <p>Because this is a time-series data, we have to be careful about the way we divide the train and test set as it cannot be a random split. Hence we had to use timseslice from caret package.</p>
-<p>The function for splitting is <code>createTimeSlices</code> and this create time slices as per <a href="https://otexts.com/fpp2/accuracy.html">Hyndman and Athanasopoulos (2013)</a>.[] The three parameters for this type of splitting are:</p>
+<p>The function for splitting is <code>createTimeSlices</code> and this create time slices as per <a href="https://otexts.com/fpp2/accuracy.html">Hyndman and Athanasopoulos (2013)</a>. The three parameters for this type of splitting are:</p>
 <ul>
 <li><p><code>initialWindow</code>: the initial number of consecutive values in each training set sample</p></li>
 <li><p><code>horizon</code>: The number of consecutive values in test set sample</p></li>
@@ -631,7 +631,7 @@ K Nearest Neighbours
 </div>
 <div id="scaling-up-using-apply-functions" class="section level3">
 <h3>Scaling-Up (using apply functions)</h3>
-<p>Now, once we have successfully modeled stock prices for one stock, we want to scale it up for all the top 10 stocks. To run it in parallel we use <code>lapply</code> and <code>map</code> functions to decrease the computation time. Without running it in parallel, it would have been a very difficult problem to run for each stock. Also, from here onwards it is easy to scale up as we just need to change only the models that we want to run.</p>
+<p>Now, once we have successfully modeled stock prices for one stock, we want to scale it up for all the top 10 stocks. To run it in parallel we use <code>lapply</code> and <code>map</code> functions to decrease the computation time. Without running it in parallel, it would have been a very difficult problem to run for each stock. Also, from here onwards it is easy to scale up as we just need to change only the models that we want to run<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>.</p>
 <table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <thead>
 <tr>
@@ -914,6 +914,7 @@ Linear Model
 <li id="fn1"><p><a href="https://www.investopedia.com/articles/active-trading/101014/basics-algorithmic-trading-concepts-and-examples.asp">Algorithmic trading</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
 <li id="fn2"><p><a href="https://www.kaggle.com/dgawlik/nyse">Kaggle Link</a><a href="#fnref2" class="footnote-back">↩</a></p></li>
 <li id="fn3"><p><a href="https://en.wikipedia.org/wiki/Feature_engineering">Feature Engineering</a><a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p><a href="https://cran.r-project.org/web/packages/microbenchmark/microbenchmark.pdf">Microbenchmark</a><a href="#fnref4" class="footnote-back">↩</a></p></li>
 </ol>
 </div>
 
